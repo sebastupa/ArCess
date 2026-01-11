@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AR Chess - Final</title>
+    
+    <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+   
+    <style>
+        body { margin: 0; overflow: hidden; font-family: sans-serif; }
+        
+        /* Interfața Utilizator (UI) */
+        #ui-layer {
+            position: absolute; top: 20px; left: 0; width: 100%; 
+            text-align: center; z-index: 10; pointer-events: none;
+        }
+        #status-box {
+            background: rgba(0, 0, 0, 0.8); color: white; padding: 12px 24px; 
+            border-radius: 50px; display: inline-block; font-size: 1.2em; 
+            border: 2px solid rgba(255, 255, 255, 0.2);
+        }
+        .highlight { color: #ffff00; font-weight: bold; }
+    </style>
+</head>
+
+<body>
+
+    <div id="ui-layer">
+        <div id="status-box">
+            Rândul: <span id="turn-text" class="highlight">ALB</span>
+        </div>
+    </div>
+
+    <a-scene embedded arjs="sourceType: webcam; debugUIEnabled: false;" renderer="colorManagement: true;">
+        
+        <a-entity camera look-controls cursor="rayOrigin: mouse" raycaster="objects: .clickable"></a-entity>
+
+        <a-light type="ambient" color="#BBB" intensity="0.6"></a-light>
+        <a-light type="directional" position="1 4 2" intensity="0.8" castShadow="true"></a-light>
+
+        <a-marker preset="hiro" smooth="true" smoothCount="10" smoothTolerance="0.01" smoothThreshold="5">
+            
+            <a-entity scale="0.25 0.25 0.25">
+                
+                <a-entity position="-3.5 0 -3.5">
+                    
+                    <a-box position="3.5 -0.15 3.5" width="9" height="0.3" depth="9" color="#5D4037"></a-box>
+                    
+                    <a-entity id="chessboard"></a-entity>
+
+                </a-entity>
+            </a-entity>
+
+        </a-marker>
+    </a-scene>
+
+    <script>
+        // --- CONSTANTE ---
+        const BOARD_SIZE = 8;
+        const COLORS = {
+            whiteSq: '#F0D9B5', blackSq: '#B58863',
+            whitePc: '#DDDDDD', blackPc: '#333333',
+            selected: '#FFFF00' // Galben
+        };
+
+        // --- STAREA JOCULUI ---
+        let gameState = {
+            board: [],
+            turn: 'white', // 'white' sau 'black'
+            selectedPiece: null // {x, z, ...}
+        };
+
+        // --- INITIALIZARE ---
+        window.onload = () => {
+            initGame();
+            renderBoard();
+        };
+
+        function initGame() {
+            gameState.board = [];
+            for (let z = 0; z < BOARD_SIZE; z++) {
+                let row = [];
+                for (let x = 0; x < BOARD_SIZE; x++) {
+                    let piece = null;
+                    // Plasare pioni
+                    if (z === 1) piece = { type: 'pawn', color: 'white' };
+                    if (z === 6) piece = { type: 'pawn', color: 'black' };
+                    // Plasare piese mari
+                    if (z === 0) piece = { type: 'major', color: 'white' };
+                    if (z === 7) piece = { type: 'major', color: 'black' };
+                    
+                    row.push(piece);
+                }
+                gameState.board.push(row);
+            }
+        }
+
+        // --- DESENARE TABLĂ ȘI PIESE ---
+        function renderBoard() {
+            const container = document.getElementById('chessboard');
+            container.innerHTML = ''; // Ștergem tot și redesenăm
+
+            for (let z = 0; z < BOARD_SIZE; z++) {
+                for (let x = 0; x < BOARD_SIZE; x++) {
+                    
+                    // 1. Desenăm Pătratul
+                    const square = document.createElement('a-box');
+                    const isWhite = (x + z) % 2 === 0;
+                    square.setAttribute('position', `${x} 0 ${z}`);
+                    square.setAttribute('width', 1);
+                    square.setAttribute('height', 0.1);
+                    square.setAttribute('depth', 1);
+                    square.setAttribute('color', isWhite ? COLORS.whiteSq : COLORS.blackSq);
+                    square.setAttribute('class', 'clickable'); // Permite click
+                    
+                    // Logică Click Pătrat
+                    square.addEventListener('click', () => onSquareClick(x, z));
+                    container.appendChild(square);
+
+                    // 2. Desenăm Piesa (dacă există)
+                    const pieceData = gameState.board[z][x];
+                    if (pieceData) {
+                        createPiece(x, z, pieceData, container);
+                    }
+                }
+            }
+        }
+
+        function createPiece(x, z, data, container) {
+            let el;
+            // Forme simple: Sferă (Pion) / Cilindru (Altele)
+            if (data.type === 'pawn') {
+                el = document.createElement('a-sphere');
+                el.setAttribute('radius', 0.35);
+                el.setAttribute('position', `${x} 0.4 ${z}`);
+            } else {
+                el = document.createElement('a-cylinder');
+                el.setAttribute('radius', 0.4);
+                el.setAttribute('height', 0.9);
+                el.setAttribute('position', `${x} 0.5 ${z}`);
+            }
+
+            // Culoare
+            el.setAttribute('color', data.color === 'white' ? COLORS.whitePc : COLORS.blackPc);
+            
+            // Verificăm dacă e selectată (o facem galbenă)
+            if (gameState.selectedPiece && 
+                gameState.selectedPiece.x === x && 
+                gameState.selectedPiece.z === z) {
+                el.setAttribute('material', `color: ${COLORS.selected}; opacity: 0.9`);
+            }
+
+            el.setAttribute('class', 'clickable'); // Permite click
+            
+            // Logică Click Piesă
+            el.addEventListener('click', (evt) => {
+                evt.stopPropagation(); // Oprim click-ul să ajungă la pătrat
+                onPieceClick(x, z, data);
+            });
+
+            container.appendChild(el);
+        }
+
+        // --- LOGICA DE JOC ---
+
+        function onPieceClick(x, z, piece) {
+            // Dacă nu e rândul tău, nu faci nimic
+            if (piece.color !== gameState.turn) return;
+
+            // Selectăm piesa
+            gameState.selectedPiece = { x, z, ...piece };
+            renderBoard(); // Redesenăm pentru a arăta selecția galbenă
+        }
+
+        function onSquareClick(targetX, targetZ) {
+            // Dacă nu avem piesă selectată, nu facem nimic
+            if (!gameState.selectedPiece) return;
+
+            const startX = gameState.selectedPiece.x;
+            const startZ = gameState.selectedPiece.z;
+
+            // Verificăm ce e pe pătratul țintă
+            const targetContent = gameState.board[targetZ][targetX];
+
+            // Dacă dai click pe o piesă de-a ta, schimbi selecția
+            if (targetContent && targetContent.color === gameState.turn) {
+                onPieceClick(targetX, targetZ, targetContent);
+                return;
+            }
+
+            // --- EXECUTĂ MUTAREA ---
+            // 1. Mutăm datele în matrice
+            gameState.board[targetZ][targetX] = gameState.board[startZ][startX];
+            gameState.board[startZ][startX] = null;
+
+            // 2. Schimbăm rândul
+            gameState.turn = gameState.turn === 'white' ? 'black' : 'white';
+            gameState.selectedPiece = null;
+
+            // 3. Actualizăm textul și grafica
+            document.getElementById('turn-text').innerText = gameState.turn === 'white' ? "ALB" : "NEGRU";
+            renderBoard();
+        }
+
+    </script>
+</body>
+</html>
